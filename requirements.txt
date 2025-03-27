@@ -1,9 +1,9 @@
 pandas
 numpy
-scikit_learn==0.22.2.post1
+scikit-learn
 torch>=1.5.0
 mysql-connector-python-rf
-ConfigSpace==0.4.21
+ConfigSpace==0.4.19
 openbox
 hyperopt
 botorch
@@ -14,8 +14,7 @@ pandas
 psutil
 pyDOE
 #kdtree
-scipy
-sklearn
+# scipy
 cython
 scikit-optimize
 smac

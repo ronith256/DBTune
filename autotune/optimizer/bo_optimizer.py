@@ -329,47 +329,78 @@ class BO_Optimizer(object, metaclass=abc.ABCMeta):
             return self.sample_random_configs(num_configs=1, excluded_configs=history_container.configurations)[0]
 
         if self.optimization_strategy == 'bo':
-            # update acquisition function
+    # update acquisition function
             if self.num_objs == 1:
-                incumbent_value = history_container.get_incumbents()[0][1]
+                # Check if there are incumbents before accessing them
+                incumbents = history_container.get_incumbents()
+                if not incumbents:
+                    self.logger.warning('No incumbents found in history. Using default/random configuration.')
+                    # Return a random or default configuration when no incumbents exist
+                    return self.sample_random_configs(num_configs=1, excluded_configs=history_container.configurations)[0]
+                    
+                incumbent_value = incumbents[0][1]
+                incumbent_config = incumbents[0][0]
+                
                 self.acquisition_function.update(model=self.surrogate_model,
-                                                 constraint_models=self.constraint_models,
-                                                 eta=incumbent_value,
-                                                 num_data=num_config_evaluated,
-                                                 compact_space=compact_space,
-                                                 incumbent = history_container.get_incumbents()[0][0]
-                                                 )
+                                                constraint_models=self.constraint_models,
+                                                eta=incumbent_value,
+                                                num_data=num_config_evaluated,
+                                                compact_space=compact_space,
+                                                incumbent=incumbent_config
+                                                )
             else:  # multi-objectives
+                # Check if there are any incumbents first
+                incumbents = history_container.get_incumbents()
+                if not incumbents:
+                    self.logger.warning('No incumbents found in history. Using default/random configuration.')
+                    # Return a random or default configuration when no incumbents exist
+                    return self.sample_random_configs(num_configs=1, excluded_configs=history_container.configurations)[0]
+                    
                 mo_incumbent_value = history_container.get_mo_incumbent_value()
+                incumbent_config = incumbents[0][0]
+                
                 if self.acq_type == 'parego':
-                    self.acquisition_function.update(model=self.surrogate_model,
-                                                     constraint_models=self.constraint_models,
-                                                     eta=scalarized_obj(np.atleast_2d(mo_incumbent_value)),
-                                                     num_data=num_config_evaluated,
-                                                     compact_space=compact_space,
-                                                     incumbent=history_container.get_incumbents()[0][0]
-                                                     )
+                    try:
+                        self.acquisition_function.update(model=self.surrogate_model,
+                                                        constraint_models=self.constraint_models,
+                                                        eta=scalarized_obj(np.atleast_2d(mo_incumbent_value)),
+                                                        num_data=num_config_evaluated,
+                                                        compact_space=compact_space,
+                                                        incumbent=incumbent_config
+                                                        )
+                    except NameError:
+                        self.logger.warning('scalarized_obj not defined. Check if weights are properly set.')
+                        return self.sample_random_configs(num_configs=1, excluded_configs=history_container.configurations)[0]
+                        
                 elif self.acq_type.startswith('ehvi'):
-                    partitioning = NondominatedPartitioning(self.num_objs, Y)
-                    cell_bounds = partitioning.get_hypercell_bounds(ref_point=self.ref_point)
-                    self.acquisition_function.update(model=self.surrogate_model,
-                                                     constraint_models=self.constraint_models,
-                                                     cell_lower_bounds=cell_bounds[0],
-                                                     cell_upper_bounds=cell_bounds[1],
-                                                     compact_space=compact_space,
-                                                     incumbent=history_container.get_incumbents()[0][0]
-                                                     )
+                    try:
+                        partitioning = NondominatedPartitioning(self.num_objs, Y)
+                        cell_bounds = partitioning.get_hypercell_bounds(ref_point=self.ref_point)
+                        self.acquisition_function.update(model=self.surrogate_model,
+                                                        constraint_models=self.constraint_models,
+                                                        cell_lower_bounds=cell_bounds[0],
+                                                        cell_upper_bounds=cell_bounds[1],
+                                                        compact_space=compact_space,
+                                                        incumbent=incumbent_config
+                                                        )
+                    except Exception as e:
+                        self.logger.warning(f'Error in EHVI update: {str(e)}. Using random configuration.')
+                        return self.sample_random_configs(num_configs=1, excluded_configs=history_container.configurations)[0]
+                        
                 else:
-                    self.acquisition_function.update(model=self.surrogate_model,
-                                                     constraint_models=self.constraint_models,
-                                                     constraint_perfs=cY,  # for MESMOC
-                                                     eta=mo_incumbent_value,
-                                                     num_data=num_config_evaluated,
-                                                     X=X, Y=Y,
-                                                     compact_space=compact_space,
-                                                     incumbent=history_container.get_incumbents()[0][0]
-                                                     )
-
+                    try:
+                        self.acquisition_function.update(model=self.surrogate_model,
+                                                        constraint_models=self.constraint_models,
+                                                        constraint_perfs=cY,  # for MESMOC
+                                                        eta=mo_incumbent_value,
+                                                        num_data=num_config_evaluated,
+                                                        X=X, Y=Y,
+                                                        compact_space=compact_space,
+                                                        incumbent=incumbent_config
+                                                        )
+                    except Exception as e:
+                        self.logger.warning(f'Error in acquisition function update: {str(e)}. Using random configuration.')
+                        return self.sample_random_configs(num_configs=1, excluded_configs=history_container.configurations)[0]
 
             # optimize acquisition function
             if not compact_space is None:
